@@ -1,0 +1,57 @@
+{
+  "name": "dsh-diction",
+  "version": "0.2.0",
+  "type": "module",
+  "description": "遣词造句：把你在十个场合里的说法学过去，让 AI 说话像你——只管怎么说，不改人格和判断",
+  "author": "穆宁 / 烛梦曦",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Muninn-and-Zmx/dsh-diction.git"
+  },
+  "homepage": "https://github.com/Muninn-and-Zmx/dsh-diction#readme",
+  "bugs": {
+    "url": "https://github.com/Muninn-and-Zmx/dsh-diction/issues"
+  },
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.0-0"
+  },
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js"
+  },
+  "files": [
+    "index.js",
+    "samples.js",
+    "text.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "language",
+    "style",
+    "voice",
+    "prompt"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
+    }
+  }
+}

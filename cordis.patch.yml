@@ -1,0 +1,14 @@
+# 遣词造句（dsh-diction）bundle patch：在 profile 根上插一行。
+#
+# 想改开关就在 profile 的 cordis.patch.yml 里覆盖这一行，例如：
+#   - id: diction
+#     config:
+#       enabled: false
+#
+# 也可以不动这里，直接改 `$DSH_HOME/dsh-diction.json`——那份优先级更高，
+# 而且改完下一句消息就生效，不用重启；样本本身在「设置 → 插件 → 遣词造句」里填。
+- insert:
+    - id: diction
+      name: 'dsh-diction'
+      config:
+        enabled: true
