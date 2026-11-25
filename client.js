@@ -19,7 +19,6 @@ window.__ModuleLoader__.load({
     const SLOT = 'plugins.detail.section';
     const CHANNEL = '/dsh-diction';
     const TIMEOUT_MS = 10000;
-    const LIMIT = 20;
 
     const STYLE = `
 .dc-panel { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 10px; border: 1px solid rgba(128, 128, 128, .25); }
@@ -65,6 +64,9 @@ window.__ModuleLoader__.load({
   padding: 4px 6px 4px 10px; border-radius: 999px; border: 1px solid rgba(128, 128, 128, .38);
 }
 .dc-group { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(128, 128, 128, .18); }
+.dc-hit { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12.5px; opacity: .85; }
+.dc-hit-tag { font-size: 11.5px; opacity: .7; border: 1px solid rgba(128, 128, 128, .3); border-radius: 999px; padding: 1px 7px; }
+.dc-hit-snip { opacity: .6; }
 `;
 
     /** 三组禁令。key 与 host 的存储字段一致；这里只用来排面板。 */
@@ -92,6 +94,7 @@ window.__ModuleLoader__.load({
         const [enabled, setEnabled] = useState(true);
         const [conversations, setConversations] = useState([]);
         const [bans, setBans] = useState(emptyBans());
+        const [hits, setHits] = useState([]);
         const [drafts, setDrafts] = useState({ word: '', pattern: '', tone: '' });
         const [status, setStatus] = useState({ kind: 'loading', text: '正在读取…' });
         const [saving, setSaving] = useState(false);
@@ -105,6 +108,7 @@ window.__ModuleLoader__.load({
             b: item.b ?? '',
           })));
           const raw = value.bans;
+          setHits(Array.isArray(value.hits) ? value.hits : []);
           setBans(raw && typeof raw === 'object' && !Array.isArray(raw)
             ? {
               word: Array.isArray(raw.word) ? raw.word : [],
@@ -140,10 +144,6 @@ window.__ModuleLoader__.load({
         };
 
         const add = () => {
-          if (conversations.length >= LIMIT) {
-            setStatus({ kind: 'error', text: `已经 ${LIMIT} 条了，到上限了` });
-            return;
-          }
           const id = `n-${Date.now().toString(36)}-${conversations.length}`;
           setConversations((previous) => [...previous, { id, a: '', b: '' }]);
           setStatus({ kind: 'idle', text: '' });
@@ -211,13 +211,12 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'dc-top' },
-            h('span', { className: 'dc-count' }, `已填 ${filled} / ${conversations.length} 条　（最多 ${LIMIT} 条）`),
+            h('span', { className: 'dc-count' }, `已填 ${filled} / ${conversations.length} 条`),
             h(
               'button',
               {
                 className: 'dc-button dc-primary',
                 type: 'button',
-                disabled: conversations.length >= LIMIT,
                 onClick: add,
               },
               '＋ 添加对话',
@@ -310,6 +309,25 @@ window.__ModuleLoader__.load({
               ),
           )),
           h('p', { className: 'dc-advice' }, '「…」表示中间可隔字，「/」表示任选其一。'),
+          hits.length > 0
+            ? h(
+              'div',
+              { className: 'dc-group' },
+              h(
+                'div',
+                { className: 'dc-head' },
+                h('span', { className: 'dc-label' }, '最近命中'),
+                h('span', { className: 'dc-sub' }, '这些是已经说出去的话里踩到禁令的，只记录、不退回；想让它别再出现，就改禁令或补样本。'),
+              ),
+              ...hits.map((hit, index) => h(
+                'div',
+                { className: 'dc-hit', key: `${hit.at}-${index}` },
+                h('span', { className: 'dc-hit-tag' }, hit.label),
+                h('span', null, `「${hit.ban}」`),
+                h('span', { className: 'dc-hit-snip' }, hit.snippet),
+              )),
+            )
+            : null,
           h(
             'div',
             { className: 'dc-actions' },

@@ -1,6 +1,6 @@
 {
   "name": "dsh-diction",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "遣词造句：把你在十个场合里的说法学过去，让 AI 说话像你——只管怎么说，不改人格和判断",
   "author": "穆宁 / 烛梦曦",

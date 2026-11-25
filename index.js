@@ -22,7 +22,7 @@ import path from 'node:path';
 
 import { randomUUID } from 'node:crypto';
 import {
-  LIMIT,
+  BAN_GROUPS,
   emptyBans,
   hasBans,
   matchBans,
@@ -90,7 +90,7 @@ export async function apply(ctx, config = {}) {
   const home = dshHome();
   const dataFile = path.join(home, DATA_FILE);
   const warn = (message) => ctx.logger?.warn?.(`[diction] ${message}`);
-  const order = Number.isFinite(Number(config.order)) ? Number(config.order) : -84;
+  const order = Number.isFinite(Number(config.order)) ? Number(config.order) : 201;
 
   /** 当前生效的数据。文件一变就整体换掉，段里读的永远是这一份。 */
   let data = freshData(config);
@@ -211,7 +211,16 @@ export async function apply(ctx, config = {}) {
    * 这一轮已经说出去的话。禁令检查靠它——`agent/turn-stopping` 时能拿到，
    * 才谈得上「当场退回重说」。按会话存，新一条用户消息进来就清空。
    */
-  const said = new Map(); // agentId -> { text, turn, nudged }
+  const said = new Map(); // agentId -> { text, checkedTurn }
+
+  /** 这一轮有没有在 pre-step 递过提醒（按 agent 记 turn）。 */
+  const hinted = new Map();
+
+  /** 命中的禁令记录，面板展示用；只留最近 50 条。 */
+  const hits = [];
+
+  /** 每个会话最近一次命中发生在哪一轮。 */
+  const lastHitTurn = new Map();
 
   // 消息进来时刷一次数据：改完文件，下一句就按新的说；顺带清掉上一轮的话。
   ctx.on('agent/inbox/inserted', ({ agent } = {}) => {
@@ -220,8 +229,9 @@ export async function apply(ctx, config = {}) {
       const buf = said.get(agent.id);
       if (buf) {
         buf.text = '';
-        buf.nudged = null;
+        buf.checkedTurn = null;
       }
+      hinted.delete(agent.id);
     }
   });
 
@@ -243,58 +253,104 @@ export async function apply(ctx, config = {}) {
     if (text === '') return;
     let buf = said.get(id);
     if (!buf) {
-      buf = { text: '', turn: null, nudged: null };
+      buf = { text: '', checkedTurn: null };
       said.set(id, buf);
     }
     buf.text = buf.text === '' ? text : `${buf.text}\n${text}`;
   });
 
   /**
-   * 禁令关卡：这一轮说过的话里出现禁令，就把回合拽回来重说。
+   * 禁令检查：只看，不拦。
    *
-   * 和言外之意的打卡关卡是同一个形状——`agent/turn-stopping` 时还能 `agent.steer()`。
-   * 三个放行条件：开关关着、一条禁令都没有、这轮已经拦过一次（防死循环）。
+   * 2026-11-25 他定的：不要退回重写，改成「检查 + 提醒 + 记录」——
+   * 命中的条目记进 `hits`，面板上摆给使用者看，由他自己决定要不要改禁令或补样本；
+   * 已经说出去的话不再被拽回来。
    */
-  ctx.on('agent/turn-stopping', async ({ agent, turn } = {}) => {
+  ctx.on('agent/turn-stopping', ({ agent, turn } = {}) => {
     if (!agent || typeof agent.id !== 'string') return;
     if (data.enabled === false) return;
     if (!hasBans(data.bans)) return;
 
     const buf = said.get(agent.id);
     if (!buf || buf.text.trim() === '') return;
-    if (buf.nudged === turn) return;
+    if (buf.checkedTurn === turn) return;
 
     const merged = [...matchBans(buf.text, data.bans), ...matchStructure(buf.text, data.bans)];
     // 同一条禁令可能既字面命中又结构命中，只报一次。
-    const hits = merged.filter((hit, index) => merged.findIndex((item) => item.ban === hit.ban) === index);
-    if (hits.length === 0) return;
+    const unique = merged.filter((hit, index) => merged.findIndex((item) => item.ban === hit.ban) === index);
 
-    buf.nudged = turn;
+    buf.checkedTurn = turn;
     buf.text = '';
-    const list = hits
-      .map((hit) => `-（${hit.label}）「${hit.ban}」，刚才是这么说的：${hit.snippet.replace(/\s+/g, ' ')}`)
-      .join('\n');
-    try {
-      await agent.steer({
-        content: [
-          {
-            type: 'text',
-            text: `这一轮说出去的话踩到禁令了：\n${list}\n\n换个说法重写这一段。别只把那几个字删掉、意思原样留着——换一种讲法。`,
-          },
-        ],
-        role: 'user',
-        id: randomUUID(),
-        source: { kind: 'diction' },
+    if (unique.length === 0) return;
+
+    const at = new Date().toISOString();
+    for (const hit of unique) {
+      hits.push({
+        at,
+        turn,
+        group: hit.group,
+        label: hit.label,
+        ban: hit.ban,
+        snippet: hit.snippet.replace(/\s+/g, ' ').slice(0, 60),
       });
-    } catch (error) {
-      warn(`steer failed: ${String(error)}`);
     }
+    // 只留最近 50 条，面板看的是这个。
+    if (hits.length > 50) hits.splice(0, hits.length - 50);
+    // 下一轮开口前提醒一句：上一轮命中过，不用改，只是个提示。
+    lastHitTurn.set(agent.id, turn);
   });
 
-  // 兜底：万一 inserted 没赶上，pre-step 再刷一次（同一个 mtime 不会重读）。
+  /**
+   * 每一步开始前，把「照样本说 + 禁令清单」递到眼前。
+   *
+   * 2026-11-25 他要的效果：系统提示里那段整轮只组装一次，调几个工具之后就离得远了；
+   * 这条是生成前的最后一句。他和言外之意约定的次序是**先言外之意、后遣词造句**——
+   * 先读懂这句话什么意思，再决定怎么说。两条的先后靠插件加载顺序实现
+   * （profile 的 bundles 里 dsh-subtext 排在 dsh-diction 前面）。
+   */
+
   ctx.on('agent/pre-step', async (payload, next) => {
     refresh();
-    return next();
+    const decision = await next();
+
+    const agent = payload?.agent;
+    if (!agent || typeof agent.id !== 'string') return decision;
+    if (data.enabled === false) return decision;
+    if (hinted.get(agent.id) === payload.turn) return decision;
+    if (decision?.kind !== 'enter' || !Array.isArray(decision.messages)) return decision;
+
+    const hasConversations = data.conversations.some((item) => item.a.trim() !== '' || item.b.trim() !== '');
+    const hasBansNow = hasBans(data.bans);
+    if (!hasConversations && !hasBansNow) return decision;
+
+    const lines = [];
+    if (hasConversations) lines.push('开口之前先照样本 B 的说法讲。');
+    if (hasBansNow) {
+      lines.push('先扫一遍下面这些禁令，命中的话换一种讲法，别只改排版：');
+      for (const group of BAN_GROUPS) {
+        const items = (data.bans[group.key] ?? []).filter((item) => item.trim() !== '');
+        if (items.length > 0) lines.push(`- ${group.label}：${items.join('；')}`);
+      }
+    }
+    lines.push('还在干活的，先把活干完；准备开口时再想这一遍。');
+    const lastTurn = lastHitTurn.get(agent.id);
+    if (typeof lastTurn === 'number' && payload.turn - lastTurn <= 1) {
+      lines.push('上一轮有内容踩到禁令，已经记在详情页里，不用回头改，这一轮留意一下。');
+    }
+
+    hinted.set(agent.id, payload.turn);
+    return {
+      ...decision,
+      messages: [
+        ...decision.messages,
+        {
+          role: 'user',
+          content: [{ type: 'text', text: lines.join('\n') }],
+          id: randomUUID(),
+          source: { kind: 'diction' },
+        },
+      ],
+    };
   });
 
   // 会话走了，清掉记账。
@@ -302,6 +358,7 @@ export async function apply(ctx, config = {}) {
     if (!agent || typeof agent.id !== 'string') return;
     registered.delete(agent.id);
     said.delete(agent.id);
+    hinted.delete(agent.id);
     degraded.delete(agent.id);
   });
 
@@ -316,7 +373,7 @@ export async function apply(ctx, config = {}) {
     path: dataFile,
     enabled: data.enabled,
     conversations: data.conversations,
-    limit: LIMIT,
+    hits: hits.slice(-20).reverse(),
     filled: data.conversations.filter((item) => item.a.trim() !== '' || item.b.trim() !== '').length,
     bans: data.bans,
   });

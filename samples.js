@@ -8,9 +8,6 @@
  * 这里只做纯函数：清洗、编号、上限、匹配，方便逐条单测。
  */
 
-/** 对话条数上限。 */
-export const LIMIT = 20;
-
 /** A、B 各自的字数上限。超了直接报错，不静默截断——截断等于替他改话。 */
 export const MAX_LINE_CHARS = 1000;
 
@@ -52,7 +49,7 @@ function readLine(value, at, label) {
 /**
  * 把交上来的对话洗干净。
  *
- * - 必须是数组，条数 ≤ `LIMIT`；
+ * - 必须是数组，条数不设上限；
  * - 每条是对象，`a` / `b` 要么没有、要么是字符串；
  * - 字段 trim、超长报错（不截断，免得悄悄丢使用者的原话）；
  * - id 缺了或重了，重新发一个。
@@ -62,7 +59,6 @@ function readLine(value, at, label) {
  */
 export function normalizeConversations(input) {
   if (!Array.isArray(input)) return { ok: false, error: 'conversations 必须是数组' };
-  if (input.length > LIMIT) return { ok: false, error: `最多 ${LIMIT} 条，现在 ${input.length} 条` };
 
   const out = [];
   const taken = [];
@@ -270,8 +266,7 @@ export const STRUCTURE_CHECKS = [
  * @param {{word?: string[], pattern?: string[], tone?: string[]}} bans
  * @returns {Array<{group: string, label: string, ban: string, phrase: string, snippet: string}>}
  */
-export function matchStructure(text, bans) {
-  if (typeof text !== 'string' || text === '') return [];
+export function matchStructure(text, bans) {  if (typeof text !== 'string' || text === '') return [];
   const words = [];
   for (const key of ['word', 'pattern', 'tone']) {
     for (const ban of Array.isArray(bans?.[key]) ? bans[key] : []) {

@@ -42,7 +42,7 @@ export const MAX_INJECT_LINE_CHARS = 500;
 export const TOTAL_BUDGET_CHARS = 8000;
 
 /** 禁令那一节的引语。 */
-export const BAN_HEADING = `**禁令**（下面这些一律不要出现；说出去之前先自己扫一眼。发现出现禁令就改，如果输出出现禁令会被拦截，严禁无视）`;
+export const BAN_HEADING = `**禁令**（下面这些是我不希望出现的说法；说出去之前先自己扫一眼。真出现了不会退回重写，只会记一笔给人看）`;
 
 /**
  * 渲染一条对话。
