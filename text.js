@@ -51,6 +51,8 @@ export const BAN_HEADING = `**禁令**（下面这些是我不希望出现的说
  */
 export function renderConversation(item) {
   const lines = [];
+  if (item.scene) lines.push(`场景：${item.scene}`);
+  if (item.identity) lines.push(`关系：${item.identity}`);
   if (item.a) lines.push(`A：${item.a}`);
   if (item.b) lines.push(`B：${item.b}`);
   return lines.join('\n');
@@ -114,6 +116,8 @@ export function renderDiction({
   let kept = 0;
   for (const item of usable) {
     const block = renderConversation({
+      scene: clip((item.scene ?? '').trim(), 120),
+      identity: clip((item.identity ?? '').trim(), 120),
       a: clip((item.a ?? '').trim(), maxLineChars),
       b: clip((item.b ?? '').trim(), maxLineChars),
     });

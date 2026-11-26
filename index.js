@@ -25,6 +25,7 @@ import {
   BAN_GROUPS,
   emptyBans,
   hasBans,
+  banPatterns,
   matchBans,
   matchStructure,
   normalizeBans,
@@ -216,6 +217,17 @@ export async function apply(ctx, config = {}) {
   /** 这一轮有没有在 pre-step 递过提醒（按 agent 记 turn）。 */
   const hinted = new Map();
 
+  /** 一条禁令在正文里出现几次（字面 + 通配都算）。 */
+  const countOccurrences = (text, ban) => {
+    let total = 0;
+    for (const pattern of banPatterns(ban)) {
+      try {
+        total += (text.match(new RegExp(pattern, 'gi')) ?? []).length;
+      } catch { /* 坏模式跳过 */ }
+    }
+    return Math.max(total, 1);
+  };
+
   /** 命中的禁令记录，面板展示用；只留最近 50 条。 */
   const hits = [];
 
@@ -275,7 +287,8 @@ export async function apply(ctx, config = {}) {
     if (!buf || buf.text.trim() === '') return;
     if (buf.checkedTurn === turn) return;
 
-    const merged = [...matchBans(buf.text, data.bans), ...matchStructure(buf.text, data.bans)];
+    const bufText = buf.text;
+    const merged = [...matchBans(bufText, data.bans), ...matchStructure(bufText, data.bans)];
     // 同一条禁令可能既字面命中又结构命中，只报一次。
     const unique = merged.filter((hit, index) => merged.findIndex((item) => item.ban === hit.ban) === index);
 
@@ -291,10 +304,12 @@ export async function apply(ctx, config = {}) {
         group: hit.group,
         label: hit.label,
         ban: hit.ban,
+        // 同一句话里同一条规则出现几次（2026-11-26 他要的：次数和记录分开看）
+        count: countOccurrences(bufText, hit.ban),
         snippet: hit.snippet.replace(/\s+/g, ' ').slice(0, 60),
       });
     }
-    // 只留最近 50 条，面板看的是这个。
+    // 只留最近 50 条，面板看的是这个；再长就成了长期占内存。
     if (hits.length > 50) hits.splice(0, hits.length - 50);
     // 下一轮开口前提醒一句：上一轮命中过，不用改，只是个提示。
     lastHitTurn.set(agent.id, turn);
@@ -382,6 +397,12 @@ export async function apply(ctx, config = {}) {
     try {
       refresh();
       if (endpoint === 'get') return { ok: true, value: view() };
+
+      if (endpoint === 'clear') {
+        hits.length = 0;
+        lastHitTurn.clear();
+        return { ok: true, value: view() };
+      }
 
       if (endpoint === 'save') {
         const body = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};

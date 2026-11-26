@@ -13,8 +13,11 @@ export const MAX_LINE_CHARS = 1000;
 
 /** 一条空对话。每次调用都新建，谁改都不串。 */
 export function emptyConversation(id) {
-  return { id, a: '', b: '' };
+  return { id, scene: '', identity: '', a: '', b: '' };
 }
+
+/** 场景与身份的字数上限。 */
+export const MAX_SCENE_CHARS = 120;
 
 /** 两句话都空？空对话不进提示词，也不占「已填」计数。 */
 export function isBlankConversation(item) {
@@ -67,6 +70,10 @@ export function normalizeConversations(input) {
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
       return { ok: false, error: `${at}不是对象` };
     }
+    const scene = readLine(raw.scene, at, '场景', MAX_SCENE_CHARS);
+    if (!scene.ok) return scene;
+    const identity = readLine(raw.identity, at, '关系', MAX_SCENE_CHARS);
+    if (!identity.ok) return identity;
     const a = readLine(raw.a, at, 'A');
     if (!a.ok) return a;
     const b = readLine(raw.b, at, 'B');
@@ -75,7 +82,7 @@ export function normalizeConversations(input) {
     const wanted = typeof raw.id === 'string' ? raw.id.trim() : '';
     const id = wanted !== '' && !taken.includes(wanted) ? wanted : nextId(taken);
     taken.push(id);
-    out.push({ id, a: a.value, b: b.value });
+    out.push({ id, scene: scene.value, identity: identity.value, a: a.value, b: b.value });
   }
   return { ok: true, conversations: out };
 }

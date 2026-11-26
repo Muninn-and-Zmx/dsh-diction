@@ -104,6 +104,8 @@ window.__ModuleLoader__.load({
           setEnabled(value.enabled !== false);
           setConversations((Array.isArray(value.conversations) ? value.conversations : []).map((item) => ({
             id: item.id,
+            scene: item.scene ?? '',
+            identity: item.identity ?? '',
             a: item.a ?? '',
             b: item.b ?? '',
           })));
@@ -145,7 +147,7 @@ window.__ModuleLoader__.load({
 
         const add = () => {
           const id = `n-${Date.now().toString(36)}-${conversations.length}`;
-          setConversations((previous) => [...previous, { id, a: '', b: '' }]);
+          setConversations((previous) => [...previous, { id, scene: '', identity: '', a: '', b: '' }]);
           setStatus({ kind: 'idle', text: '' });
         };
 
@@ -239,6 +241,30 @@ window.__ModuleLoader__.load({
                 h(
                   'div',
                   { className: 'dc-field' },
+                  h('span', { className: 'dc-tag' }, '场景'),
+                  h('input', {
+                    className: 'dc-input',
+                    type: 'text',
+                    value: item.scene ?? '',
+                    placeholder: '什么场合，可以留空',
+                    onChange: (event) => update(item.id, 'scene', event.target.value),
+                  }),
+                ),
+                h(
+                  'div',
+                  { className: 'dc-field' },
+                  h('span', { className: 'dc-tag' }, '关系'),
+                  h('input', {
+                    className: 'dc-input',
+                    type: 'text',
+                    value: item.identity ?? '',
+                    placeholder: '你和他是什么关系，可以留空',
+                    onChange: (event) => update(item.id, 'identity', event.target.value),
+                  }),
+                ),
+                h(
+                  'div',
+                  { className: 'dc-field' },
                   h('span', { className: 'dc-tag' }, 'A'),
                   h('input', {
                     className: 'dc-input',
@@ -309,21 +335,35 @@ window.__ModuleLoader__.load({
               ),
           )),
           h('p', { className: 'dc-advice' }, '「…」表示中间可隔字，「/」表示任选其一。'),
+          h(
+            'div',
+            { className: 'dc-head' },
+            h('span', { className: 'dc-label' }, '最近命中'),
+            h('span', { className: 'dc-sub' }, '已经说出去的话里踩到禁令的，只记录、不退回；想让它别再出现，就改禁令或补样本。'),
+            hits.length > 0
+              ? h('button', {
+                className: 'dc-button',
+                type: 'button',
+                onClick: async () => {
+                  try {
+                    adopt(await call('clear', {}));
+                  } catch (error) {
+                    setStatus({ kind: 'error', text: `清空失败：${messageOf(error)}` });
+                  }
+                },
+              }, '清空记录')
+              : null,
+          ),
           hits.length > 0
             ? h(
               'div',
               { className: 'dc-group' },
-              h(
-                'div',
-                { className: 'dc-head' },
-                h('span', { className: 'dc-label' }, '最近命中'),
-                h('span', { className: 'dc-sub' }, '这些是已经说出去的话里踩到禁令的，只记录、不退回；想让它别再出现，就改禁令或补样本。'),
-              ),
               ...hits.map((hit, index) => h(
                 'div',
                 { className: 'dc-hit', key: `${hit.at}-${index}` },
                 h('span', { className: 'dc-hit-tag' }, hit.label),
                 h('span', null, `「${hit.ban}」`),
+                hit.count > 1 ? h('span', { className: 'dc-hit-snip' }, `×${hit.count}`) : null,
                 h('span', { className: 'dc-hit-snip' }, hit.snippet),
               )),
             )
